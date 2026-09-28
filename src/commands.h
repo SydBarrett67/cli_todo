@@ -1,10 +1,14 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 enum class Command {
+    NEW,
     ADD,
-    REMOVE,
+    CHECK,
+    DELETE,
     READ,
     UNKNOWN
 };
@@ -18,13 +22,20 @@ struct CmdInfo {
 class Commands
 {
 private:
-    static Command parseCommand(const std::string& token)
-    {
+
+    // Helper for recognizing commands
+    static Command parseCommand(const std::string& token) {
+        if (token == "new")
+            return Command::NEW;
+
         if (token == "add")
             return Command::ADD;
 
-        if (token == "remove")
-            return Command::REMOVE;
+        if (token == "check")
+            return Command::CHECK;
+
+        if (token == "delete")
+            return Command::DELETE;
 
         if (token == "read")
             return Command::READ;
@@ -33,8 +44,9 @@ private:
     }
 
 public:
-    static CmdInfo parse(int argc, char* argv[])
-    {
+
+    // Parse raw command into CmdInfo struct
+    static CmdInfo parse(int argc, char* argv[]) {
         CmdInfo info {
             Command::UNKNOWN,
             {},
@@ -70,34 +82,147 @@ public:
         return info;
     }
 
-    static void execute(const CmdInfo& info)
-    {
+    // Execute parsed commands
+    static void execute(const CmdInfo& info) {
+
+        // Get file path based on argument
+        std::filesystem::path filePath =
+            std::filesystem::current_path() / "todo.txt";
+
         switch (info.command) {
-            case Command::ADD:
-                std::cout << "Executing ADD\n";
-                break;
+            case Command::NEW: {
 
-            case Command::REMOVE:
-                std::cout << "Executing REMOVE\n";
-                break;
+                // Create file
+                std::fstream file(filePath, std::ios::out);
 
-            case Command::READ:
-                std::cout << "Executing READ\n";
+                file << "TODO:\n";
+
+                std::cout << "\nCreated \"todo\" file.\n";
+
+                file.close();
+
                 break;
+            }
+
+            case Command::ADD: {
+                
+                if (info.arguments.empty()) {
+                    std::cout << "\nMissing argument\n";
+                    break;
+                }
+
+                // Open file
+                std::fstream file(filePath, std::ios::in | std::ios::out);
+
+                int index = 0;
+                std::string line;
+                while (std::getline(file, line)) {
+                    if (line == "TODO:") continue;
+
+                    if (!line.empty()) {
+                        size_t space = line.find(' ');
+                        if (space != std::string::npos)
+                            index = std::stoi(line.substr(0, space));
+                    }
+                }
+                index++;
+
+                file.clear();
+                file.seekp(0, std::ios::end);
+
+                file << index << " - " << info.arguments[0] << "\n";
+
+                std::cout << "\nAdded \"" << info.arguments[0] << "\" in todo file.\n";
+
+                file.close();
+
+                break;
+            }
+
+            case Command::CHECK: {
+                if (info.arguments.empty()) {
+                    std::cout << "\nMissing index\n";
+                    break;
+                }
+
+                int index_to_delete = 0;
+
+                try {
+                    index_to_delete = std::stoi(info.arguments[0]);
+                }
+                catch (const std::invalid_argument&) {
+                    std::cout << "\nInvalid index\n";
+                    break;
+                }
+
+                std::string result = "";
+
+                std::fstream file(filePath, std::ios::in);
+
+                bool deleted = false;
+                std::string line;
+
+                while (std::getline(file, line)) {
+
+                    if (line == "TODO:") {
+                        result += line + "\n";
+                        continue;
+                    }
+
+                    size_t space = line.find(' ');
+
+                    if (space == std::string::npos)
+                        continue;
+
+                    int index = std::stoi(line.substr(0, space));
+
+                    if (index == index_to_delete) {
+                        deleted = true;
+                        continue;
+                    }
+
+                    if (deleted) {
+                        line.replace(0, space, std::to_string(index - 1));
+                    }
+
+                    result += line + "\n";
+                }
+
+                file.close();
+
+                std::fstream output(filePath, std::ios::out | std::ios::trunc);
+                output << result;
+
+                break;
+            }
+
+            case Command::DELETE: {
+                
+                std::filesystem::remove(filePath);
+
+                break;
+            }
+
+            case Command::READ: {
+
+                std::string result = "";
+
+                // Open file
+                std::fstream file(filePath, std::ios::in);
+
+                std::string line = "";
+                while (std::getline(file, line)) {
+                    result += line + "\n";
+                }
+
+                std::cout << result << "\n";
+
+                break;
+            }
 
             case Command::UNKNOWN:
-                std::cout << "Unknown command\n";
+                std::cout << "\nUnknown command\n";
                 break;
         }
-
-        std::cout << "\nFlags:\n";
-
-        for (const auto& flag : info.flags)
-            std::cout << "  " << flag << '\n';
-
-        std::cout << "\nArguments:\n";
-
-        for (const auto& argument : info.arguments)
-            std::cout << "  " << argument << '\n';
     }
 };
